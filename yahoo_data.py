@@ -87,7 +87,7 @@ def parse_symbols(sym_string, sym_file):
 
 if __name__ == '__main__':
     parser =  argparse.ArgumentParser()
-    parser.add_argument("--list", help="command line comma separated list of symbols", type=str, default="")
+    parser.add_argument("--list", help="command line SPACE eparated list of symbols", type=str, default="")
     parser.add_argument("--file", help="single entry per line symbol file", type=str, default="")
     u = parser.parse_args()
    
