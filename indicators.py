@@ -200,6 +200,40 @@ class Mo(Indicator):
             m = n - p
             self.derived.append(m)
 
+class RunMonitor(Indicator):
+    def __init__(self, derived_len=50):
+        super().__init__(history_len=2, derived_len=derived_len)
+        self.downs = self.ups = 0
+        self.up_total = self.down_total = 0
+
+    def _calculate(self):
+        ## creates tuples representing consecutive changes (runs) in a time series -> (run_count, magnitude)
+        ## negative values indicate consecutive down moves: (-3, -4,5) = down 3 days with total maginitude of -4.5 points
+        ## positive values indicate consecutive up moves: (5, 11.24) = up 5 days with total maginitude of 11.24 points
+        ## zero price changes are neutral
+        if len(self.history) >= self.history_len:
+            n = self.history[-1]
+            p = self.history[-2]
+            m = n - p
+            if m < 0:
+                self.downs -= 1
+                self.down_total += m
+                self.ups = self.up_total  = 0 
+                self.derived.append((self.downs, self.down_total))
+            elif m > 0:
+                self.ups += 1
+                self.up_total += m
+                self.downs = self.down_total  = 0
+                self.derived.append((self.ups, self.up_total))
+            else:
+                if len(self.derived) > 0:
+                    prev_cnt, prev_val = self.derived[-1]
+                    if prev_cnt < 0: prev_cnt -= 1
+                    if prev_cnt > 0: prev_cnt += 1
+                    self.derived.append((prev_cnt, prev_val))
+                else:
+                    self.derived.append((0,0))
+
 class LogRtn(Indicator):
     def __init__(self, history_len, derived_len=50):
         super().__init__(history_len, derived_len)
@@ -213,13 +247,24 @@ class LogRtn(Indicator):
 
 class MA(Indicator):
     def __init__(self, history_len, derived_len=50):
-        super().__init__(history_len, derived_len)
+        super().__init__(history_len, derived_len=derived_len)
 
     def _calculate(self):
         if len(self.history) >= self.history_len:
             m = list(self.history)[-self.history_len:]
             self.derived.append(statistics.mean(m))
 
+class IBS(Indicator):
+    ## internal bar strength iindicator
+    ## (Close - Low)/(High - Low)
+    def __init__(self, derived_len=50):
+        super().__init__(history_len=1, derived_len=derived_len)
+
+    def _calculate(self):
+        if len(self.history) >= self.history_len:
+            bar = self.history[-1]
+            ibs = (bar['Close'] - bar['Low'])/(bar['High'] - bar['Low']) * 100
+            self.derived.append(ibs)
 
 class RSI(Indicator):
     def __init__(self, history_len, derived_len=50):
@@ -244,6 +289,27 @@ class RSI(Indicator):
 
             rsi = 100.0 - 100.0/(1+(upv/dnv))
             self.derived.append(rsi)
+
+class CutlersRSI(Indicator):
+    def __init__(self, history_len, derived_len=50):
+        super().__init__(history_len, derived_len)
+
+    def _calculate(self):
+        if len(self.history) >= self.history_len+1:
+            # subtract current prices a[1:], from last prices a[:-1]
+            # remember the most current price is the last price in the deque/list
+            chgs = [x[0] - x[1] for x in zip(list(self.history)[1:],list(self.history)[:-1])]
+            ups = sum([ x for x in chgs if x >= 0 ])
+            dns = sum([ abs(x) for x in chgs if x < 0 ])
+
+            rsi = None
+            if dns == 0:
+                rsi = 100 
+            else:
+                rsi = 100.0 - 100.0/(1+(ups/dns))
+
+            self.derived.append(rsi)
+
             
 class Thanos(Indicator):
     def __init__(self, ma_len, no_of_samples, derived_len=50):
@@ -276,6 +342,18 @@ class StDev(Indicator):
         if len(self.history) >= self.history_len:
             m = statistics.pstdev(self.history)
             self.derived.append(m)
+
+class ZScore(Indicator):
+    def __init__(self, sample_size, derived_len=50):
+        super().__init__(history_len=sample_size+1, derived_len=derived_len)
+
+    def _calculate(self):
+        if len(self.history) >= self.history_len:
+            pop = list(self.history)[:-2]
+            v = self.history[-1]
+            s = statistics.pstdev(pop)
+            m = statistics.mean(pop)
+            self.derived.append((v-m)/s)
 
 
 class EMA(Indicator):
@@ -311,6 +389,19 @@ class LastLow(Indicator):
             lowest = min(list(self.history)[-self.last_len:])
             self.derived.append(lowest)
             return lowest
+        else:
+            return None
+
+class LastHigh(Indicator):
+    def __init__(self, last_len, derived_len=50):
+        super().__init__(last_len, derived_len)
+        self.last_len = last_len
+
+    def _calculate(self):
+        if len(self.history) >= self.history_len:
+            highest = max(list(self.history)[-self.last_len:])
+            self.derived.append(highest)
+            return highest 
         else:
             return None
 
@@ -588,6 +679,18 @@ def test_ema():
     print(e.valueAt(1))
     print(e.valueAt(0))
 
+def test_zscore():
+
+    e = ZScore(sample_size=50)
+
+    from random import randint
+    changes = [ randint(-100,100)/100.0 for x in range(60) ]
+    changes[0] = 100
+    prices = [ sum(changes[0:i]) for i in range(1,61) ]
+    for i, p in enumerate(prices):
+        v = e.push(p)
+        print(f'{i:03d} {p:10.4f} {v}')
+
 
 def test_macd():
 
@@ -663,6 +766,20 @@ def test_rsi():
         print(f'{i:03d} {p:10.4f} {v}')
     print(len(e.history))
 
+def test_cutlers_rsi():
+
+    e = CutlersRSI(3)
+
+    from random import randint
+    samples = 20
+    changes = [ randint(-300,300)/100.0 for x in range(samples) ]
+    changes[0] = 100
+    prices = [ sum(changes[0:i]) for i in range(1,samples+1) ]
+    for i, p in enumerate(prices):
+        v = e.push(p)
+        print(f'{i:03d} {p:10.4f} {v}')
+    print(len(e.history))
+
 
 def test_dataseries():
 
@@ -678,6 +795,23 @@ def test_dataseries():
         print(f'{i:03d} {p:10.4f} {v}')
     print(e.derived)
     print(e.valueAt(3))
+
+def test_runs():
+
+    e = RunMonitor()
+
+    from random import randint
+    samples = 50
+    changes = [ randint(-300,300)/100.0 for x in range(samples) ]
+    changes[0] = 100
+    prices = [ sum(changes[0:i]) for i in range(1,samples+1) ]
+    prev = None
+    for i, p in enumerate(prices):
+        v = e.push(p)
+        if prev is not None:
+            c = p - prev
+            print(f'{i:03d} {p:10.4f} {c:10.4f} {v}')
+        prev = p 
 
 
 def test_thanos():
@@ -739,16 +873,19 @@ def test_volatility_stop():
 if __name__ == '__main__':
     #test_thanos()
     #test_rsi()
+    #test_cutlers_rsi()
     #test_dataseries()
     #test_monday_anchor()
     #test_cross_dwn()
     #test_ema()
+    test_zscore()
     #test_macd()
     #test_converter()
     #test_converter_with_indicator()
     #test_converter_with_ema()
     #test_volatility_stop()
-    test_last_low()
+    #test_last_low()
+    #test_runs()
 
 
 
