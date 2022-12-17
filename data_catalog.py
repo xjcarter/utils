@@ -11,7 +11,7 @@ import argparse
 ## stored in the /data directory
 ##
 
-def list_data(symbol_list):
+def list_data(symbol_list, count_limit, names_only):
 
     table_cols = "Count StartDt EndDt Symbol Close StDev Pct".split()
     daily_table = PrettyTable(table_cols)
@@ -46,13 +46,21 @@ def list_data(symbol_list):
 
             q = stdev.valueAt(0)
             values = [count, start_dt, end_dt, symbol, close_price, q, q/close_price]
-            daily_table.add_row(values)
+
+            if count >= count_limit:
+                ## create a data table, otherwise just list the filtered names
+                if not names_only:
+                    daily_table.add_row(values)
+                else:
+                    print(symbol)
         except: 
            errors.append(f'Cant find: {stock_file}')  
 
-    print(" ")
-    print(daily_table)
-    print(" ")
+    if not names_only:
+        print(" ")
+        print(daily_table)
+        print(" ")
+
     for y in errors:
         print(y)
 
@@ -73,9 +81,11 @@ def parse_symbols(sym_string, sym_file):
 
 if __name__ == '__main__':
     parser =  argparse.ArgumentParser()
-    parser.add_argument("--list", help="command line comma separated list of symbols", type=str, default="")
+    parser.add_argument("--list", help="command line SPACE separated list of symbols", type=str, default="")
     parser.add_argument("--file", help="single entry per line symbol file", type=str, default="")
+    parser.add_argument("--count_limit", help="limit of dataset size", type=int, default=0)
+    parser.add_argument("--names_only", help="just list symbol names, no data table", action='store_true')
     u = parser.parse_args()
 
     symbol_list = parse_symbols(u.list, u.file) 
-    list_data(symbol_list)
+    list_data(symbol_list, u.count_limit, u.names_only)
