@@ -337,19 +337,60 @@ class Thanos(Indicator):
 class StDev(Indicator):
     def __init__(self, sample_size, derived_len=50):
         super().__init__(history_len=sample_size, derived_len=derived_len)
+        self.sample_sz = sample_size
 
     def _calculate(self):
         if len(self.history) >= self.history_len:
-            m = statistics.pstdev(self.history)
+            m = list(self.history)[-self.sample_sz:]
+            v = pandas.Series(data=m)
+            self.derived.append(v.std())
+
+class Corr(Indicator):
+    ## correlation - expects pairs to be pushed (price1, price2)
+    def __init__(self, sample_size, derived_len=50):
+        super().__init__(history_len=sample_size, derived_len=derived_len)
+        self.sample_sz = sample_size
+
+    def _calculate(self):
+        if len(self.history) >= self.history_len:
+            pairs = list(self.history)[-self.sample_sz:]
+            a = pandas.Series(data=[ x[0] for x in pairs ])
+            b = pandas.Series(data=[ x[1] for x in pairs ])
+            m = a.corr(b)
+            self.derived.append(m)
+
+class Beta(Indicator):
+    ## beta - expects pairs to be pushed (price1, price2)
+    def __init__(self, sample_size, derived_len=50):
+        super().__init__(history_len=sample_size, derived_len=derived_len)
+        self.sample_sz = sample_size
+
+    def _calculate(self):
+        if len(self.history) >= self.history_len:
+            pairs = list(self.history)[-self.sample_sz:]
+            a = pandas.Series(data=[ x[0] for x in pairs ])
+            b = pandas.Series(data=[ x[1] for x in pairs ])
+            m = a.cov(b)/b.var()
+            self.derived.append(m)
+
+class Median(Indicator):
+    def __init__(self, sample_size, derived_len=50):
+        super().__init__(history_len=sample_size, derived_len=derived_len)
+        self.sample_sz = sample_size
+
+    def _calculate(self):
+        if len(self.history) >= self.history_len:
+            m = statistics.median(list(self.history)[-self.sample_sz:])
             self.derived.append(m)
 
 class ZScore(Indicator):
     def __init__(self, sample_size, derived_len=50):
         super().__init__(history_len=sample_size+1, derived_len=derived_len)
+        self.sample_sz = sample_size+1
 
     def _calculate(self):
         if len(self.history) >= self.history_len:
-            pop = list(self.history)[:-2]
+            pop = list(self.history)[-(self.sample_sz):-2]
             v = self.history[-1]
             s = statistics.pstdev(pop)
             m = statistics.mean(pop)
@@ -679,6 +720,37 @@ def test_ema():
     print(e.valueAt(1))
     print(e.valueAt(0))
 
+def test_correlation():
+
+    e = Corr(sample_size=6)
+   
+    prices = [ (43, 99), (21, 65), (25,79), (42,75), (57,87), (59,81) ]
+    for i, p in enumerate(prices):
+        v = e.push(p)
+        print(f'{i:03d} {p} {v}')
+
+def test_beta():
+
+    e = Beta(sample_size=6)
+   
+    prices = [ (43, 99), (21, 65), (25,79), (42,75), (57,87), (59,81) ]
+    for i, p in enumerate(prices):
+        v = e.push(p)
+        print(f'{i:03d} {p} {v}')
+
+def test_stdev():
+
+    e = StDev(sample_size=6)
+   
+    prices = [ (43, 99), (21, 65), (25,79), (42,75), (57,87), (59,81) ]
+    for i, p in enumerate(prices):
+        v = e.push(p[0])
+        print(f'{i:03d} {p} {v}')
+
+    m = [x[0] for x in prices]
+    j = pandas.Series(data=m)
+    print(j.std())
+
 def test_zscore():
 
     e = ZScore(sample_size=50)
@@ -878,7 +950,9 @@ if __name__ == '__main__':
     #test_monday_anchor()
     #test_cross_dwn()
     #test_ema()
-    test_zscore()
+    test_correlation()
+    test_stdev()
+    test_beta()
     #test_macd()
     #test_converter()
     #test_converter_with_indicator()

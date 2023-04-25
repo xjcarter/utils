@@ -44,7 +44,7 @@ def is_start_of_week(trade_date, holidays):
     return trade_date in firsts
 
 
-## find the first trading day of the week 
+## find the last trading day of the week 
 def is_end_of_week(trade_date, holidays):
     ends = [] 
     find_prev_day = False
