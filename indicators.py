@@ -337,11 +337,10 @@ class Thanos(Indicator):
 class StDev(Indicator):
     def __init__(self, sample_size, derived_len=50):
         super().__init__(history_len=sample_size, derived_len=derived_len)
-        self.sample_sz = sample_size
 
     def _calculate(self):
         if len(self.history) >= self.history_len:
-            m = list(self.history)[-self.sample_sz:]
+            m = list(self.history)[-self.history_len:]
             v = pandas.Series(data=m)
             self.derived.append(v.std())
 
@@ -361,7 +360,7 @@ class Corr(Indicator):
 
     def _calculate(self):
         if len(self.history) >= self.history_len:
-            pairs = list(self.history)[-self.sample_sz:]
+            pairs = list(self.history)[-self.history_len:]
             a = pandas.Series(data= self.returns([ x[0] for x in pairs ]))
             b = pandas.Series(data= self.returns([ x[1] for x in pairs ]))
             m = a.corr(b)
