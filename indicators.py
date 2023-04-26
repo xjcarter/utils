@@ -347,29 +347,45 @@ class StDev(Indicator):
 
 class Corr(Indicator):
     ## correlation - expects pairs to be pushed (price1, price2)
+    ## calculates the correlation of the returns of time series price1 vs time series price2
     def __init__(self, sample_size, derived_len=50):
-        super().__init__(history_len=sample_size, derived_len=derived_len)
-        self.sample_sz = sample_size
+        super().__init__(history_len=sample_size+1, derived_len=derived_len)
+
+    def returns(self, price_array):
+        p = price_array
+        rtns = []
+        for i in range(1, len(p)):
+            r = math.log(p[i]/p[i-1])
+            rtns.append(r)
+        return rtns
 
     def _calculate(self):
         if len(self.history) >= self.history_len:
             pairs = list(self.history)[-self.sample_sz:]
-            a = pandas.Series(data=[ x[0] for x in pairs ])
-            b = pandas.Series(data=[ x[1] for x in pairs ])
+            a = pandas.Series(data= self.returns([ x[0] for x in pairs ]))
+            b = pandas.Series(data= self.returns([ x[1] for x in pairs ]))
             m = a.corr(b)
             self.derived.append(m)
 
 class Beta(Indicator):
     ## beta - expects pairs to be pushed (price1, price2)
+    ## calculates the beta of the returns of time series price1 vs time series price2
     def __init__(self, sample_size, derived_len=50):
-        super().__init__(history_len=sample_size, derived_len=derived_len)
-        self.sample_sz = sample_size
+        super().__init__(history_len=sample_size+1, derived_len=derived_len)
+
+    def returns(self, price_array):
+        p = price_array
+        rtns = []
+        for i in range(1, len(p)):
+            r = math.log(p[i]/p[i-1])
+            rtns.append(r)
+        return rtns
 
     def _calculate(self):
         if len(self.history) >= self.history_len:
-            pairs = list(self.history)[-self.sample_sz:]
-            a = pandas.Series(data=[ x[0] for x in pairs ])
-            b = pandas.Series(data=[ x[1] for x in pairs ])
+            pairs = list(self.history)[-self.history_len:]
+            a = pandas.Series(data= self.returns([ x[0] for x in pairs ]))
+            b = pandas.Series(data= self.returns([ x[1] for x in pairs ]))
             m = a.cov(b)/b.var()
             self.derived.append(m)
 
