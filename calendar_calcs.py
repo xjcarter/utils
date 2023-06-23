@@ -1,7 +1,7 @@
 
 import pandas
 import calendar
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 MONDAY = 0
 FRIDAY = 4
@@ -44,6 +44,16 @@ def is_start_of_week(trade_date, holidays):
     return trade_date in firsts
 
 
+## find previous trading day relative to the date given
+def prev_trading_day(reference_date, holidays):
+    one_day_back = datetime.timedelta(days=1)
+    d = reference_date - one_day_back
+    while True:
+        if d.weekday() < SATURDAY and d not in holidays:
+            return d
+        else:
+            d -= one_day_back
+
 ## find the last trading day of the week 
 def is_end_of_week(trade_date, holidays):
     ends = [] 
@@ -64,7 +74,7 @@ def is_end_of_week(trade_date, holidays):
 
 def load_holidays():
     ## file foramt: "Date,Holiday"
-    fn = "/home/jcarter/sandbox/trading/data/us_market_holidays.csv"
+    fn = "/home/jcarter/work/trading/data/us_market_holidays.csv"
     df = pandas.read_csv(fn)
     holidays = []
     for d in df['Date'].to_list():
