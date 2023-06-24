@@ -46,13 +46,14 @@ def is_start_of_week(trade_date, holidays):
 
 ## find previous trading day relative to the date given
 def prev_trading_day(reference_date, holidays):
-    one_day_back = datetime.timedelta(days=1)
+    one_day_back = timedelta(days=1)
     d = reference_date - one_day_back
     while True:
         if d.weekday() < SATURDAY and d not in holidays:
             return d
         else:
             d -= one_day_back
+
 
 ## find the last trading day of the week 
 def is_end_of_week(trade_date, holidays):
