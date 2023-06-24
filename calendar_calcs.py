@@ -50,7 +50,7 @@ def prev_trading_day(reference_date, holidays):
     d = reference_date - one_day_back
     while True:
         if d.weekday() < SATURDAY and d not in holidays:
-            return d
+            return date(d.year, d.month, d.day)
         else:
             d -= one_day_back
 
