@@ -1,7 +1,8 @@
+from datetime import datetime, timedelta 
 
 ## create date time object a from time string (HH:MM)
 ## calculate the second between a benchmark datetime and the forward looking time.
-def seconds_util(benchmark, time_string):
+def seconds_until(benchmark, time_string):
     now = benchmark
     current_date = now.date()  # Get the current date
     time_parts = time_string.split(':')
