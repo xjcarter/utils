@@ -3,24 +3,33 @@ import yfinance as yf
 from pathlib import Path
 from datetime import datetime, timedelta
 import pandas
-import sys
 import argparse
 
 ## Grabs Daily Data from Yahoo Finance 
-## Usage: python yahoo_data.py --list "AAA BBB" --file "symbolfile.txt" 
+## Usage: python yahoo_data.py YAHOO_DOWNLOAD_KEY:<SYMBOL_ALIAS>
+##   = the yahoo_download key is the tag used to fetch the data from yahoo
+##   - the alias is optional and is to be used for naming the data file when the yahoo_key has a goofy format
+##   - i.e. the yahoo_download_key contains symbols don't conform to typical filename conventions
+##   - if no alias is given the yahoo_download_key is used as the name for the data file
+## Usage: python yahoo_data.py ^DJI:DOW_INDEX ^RUT IBM GOOG
 
-DATA_DIR = '/home/jcarter/sandbox/trading/data/'
+DATA_DIR = '/home/jcarter/work/trading/data/'
 START_DATE = '1999-12-31'
 
 def get_daily_data(symbols):
    
     databank = dict()
+    COLON = ':'
 
-    for sym in symbols:
+    for key in symbols:
     
-        sym = sym.upper()
-        sym = sym.replace('"','')
-        if len(sym) == 0: continue
+        key = key.upper()
+        yahoo_key = sym = key
+
+        ## handle filename alias for goofy yahoo_down_load keys
+        if COLON in key:
+            yahoo_key, sym = key.split(COLON)
+
         filename = f'{DATA_DIR}/{sym}.csv'
 
         current_data = None
@@ -47,7 +56,7 @@ def get_daily_data(symbols):
             try:
                 start, today = start.date(), today.date()
                 print(f'Fetching: {sym}, {start}, {today}')
-                new_data = yf.download(sym, datetime.strftime(start,"%Y-%m-%d"), datetime.strftime(today,"%Y-%m-%d"))
+                new_data = yf.download(yahoo_key, datetime.strftime(start,"%Y-%m-%d"), datetime.strftime(today,"%Y-%m-%d"))
                 if new_data is None:
                     print(f'Could not fetch data: {sym}, {start}, {today}')
 
@@ -69,12 +78,13 @@ def get_daily_data(symbols):
 
     return databank
 
+
 def parse_symbols(sym_string, sym_file):
-    symbols = [] 
+    symbols = []
     if sym_string is not None and len(sym_string) > 0:
         symbols = sym_string.split()
 
-    file_symbols = [] 
+    file_symbols = []
     if sym_file is not None and len(sym_file) > 0:
         with open(sym_file, 'r') as f:
             file_symbols = f.readlines()
@@ -82,18 +92,16 @@ def parse_symbols(sym_string, sym_file):
     ## clean whitespace
     v = [x.strip() for x in symbols + file_symbols]
     return v
-        
 
 
 if __name__ == '__main__':
     parser =  argparse.ArgumentParser()
-    parser.add_argument("--list", help="command line SPACE eparated list of symbols", type=str, default="")
+    parser.add_argument("--list", help="command line comma separated list of symbols", type=str, default="")
     parser.add_argument("--file", help="single entry per line symbol file", type=str, default="")
     u = parser.parse_args()
-   
-    symbols = parse_symbols(u.list, u.file)
-    if len(symbols) > 0:
-        get_daily_data(symbols)
+
+    symbol_list = parse_symbols(u.list, u.file) 
+    get_daily_data(symbol_list)
         
 
 
