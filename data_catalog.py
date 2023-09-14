@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 import pandas
 from prettytable import PrettyTable
-from indicators import StDev
+from indicators import StDev, Median
 import argparse
 
 ##
@@ -11,27 +11,37 @@ import argparse
 ## stored in the /data directory
 ##
 
-def list_data(symbol_list, count_limit, names_only):
+def list_data(symbol_list):
 
-    table_cols = "Count StartDt EndDt Symbol Close StDev Pct".split()
+    table_cols = "Count StartDt EndDt Symbol Close mdv20 StDev Pct".split()
     daily_table = PrettyTable(table_cols)
 
-    for col in "Count StartDt EndDt Symbol Close StDev Pct".split():
+    for col in table_cols:
         daily_table.align[col] = "l"
         if col in ["Close", "StDev", "Pct"]:
             daily_table.float_format[col] = ".2"
             daily_table.align[col] = "r"
 
+    COLON = ':'
     errors = []
-    for symbol in symbol_list:
-        symbol = symbol.replace('"','')
+    for key in symbol_list:
+        key = key.replace('"','')
+        key = key.upper()
+
+        yahoo_key = symbol = key
+
+        ## handle filename alias for goofy yahoo_down_load keys
+        if COLON in key:
+            yahoo_key, symbol = key.split(COLON)
+
         if len(symbol) == 0: continue
         try:
-            stock_file = f'/home/jcarter/sandbox/trading/data/{symbol}.csv'
+            stock_file = f'/home/jcarter/work/trading/data/{symbol}.csv'
             stock_df = pandas.read_csv(stock_file)
             stock_df.set_index('Date', inplace=True)
 
             stdev = StDev(sample_size=50)
+            mdv = Median(sample_size=20)
 
             count = stock_df.shape[0]
             start_dt = datetime.strptime(stock_df.index[0],"%Y-%m-%d").date()
@@ -43,24 +53,18 @@ def list_data(symbol_list, count_limit, names_only):
                 stock_bar = stock_df.loc[idate]
                 close_price = stock_bar['Close']
                 stdev.push(close_price)
+                mdv.push(stock_bar['Volume'])
 
             q = stdev.valueAt(0)
-            values = [count, start_dt, end_dt, symbol, close_price, q, q/close_price]
-
-            if count >= count_limit:
-                ## create a data table, otherwise just list the filtered names
-                if not names_only:
-                    daily_table.add_row(values)
-                else:
-                    print(symbol)
+            mm = int(mdv.valueAt(0))
+            values = [count, start_dt, end_dt, symbol, close_price, mm, q, q/close_price]
+            daily_table.add_row(values)
         except: 
            errors.append(f'Cant find: {stock_file}')  
 
-    if not names_only:
-        print(" ")
-        print(daily_table)
-        print(" ")
-
+    print(" ")
+    print(daily_table)
+    print(" ")
     for y in errors:
         print(y)
 
@@ -81,11 +85,9 @@ def parse_symbols(sym_string, sym_file):
 
 if __name__ == '__main__':
     parser =  argparse.ArgumentParser()
-    parser.add_argument("--list", help="command line SPACE separated list of symbols", type=str, default="")
+    parser.add_argument("--list", help="command line comma separated list of symbols", type=str, default="")
     parser.add_argument("--file", help="single entry per line symbol file", type=str, default="")
-    parser.add_argument("--count_limit", help="limit of dataset size", type=int, default=0)
-    parser.add_argument("--names_only", help="just list symbol names, no data table", action='store_true')
     u = parser.parse_args()
 
     symbol_list = parse_symbols(u.list, u.file) 
-    list_data(symbol_list, u.count_limit, u.names_only)
+    list_data(symbol_list)
