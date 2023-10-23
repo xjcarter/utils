@@ -4,8 +4,12 @@ import calendar
 from datetime import date, datetime, timedelta
 
 MONDAY = 0
+TUESDAY = 1 
+WEDNESDAY = 2 
+THURSDAY = 3 
 FRIDAY = 4
 SATURDAY = 5
+SUNDAY = 6
 WEEKDAYS = ['MON','TUE','WED','THU','FRI','SAT','SUN']
 
 def cvt_date(str):
@@ -43,13 +47,29 @@ def is_start_of_week(trade_date, holidays):
 
     return trade_date in firsts
 
+def is_day_of_week(tgt_day, trade_date, holidays):
+    firsts = []
+    find_next_day = False
+    for d in business_days(trade_date):
+        if find_next_day == False:
+            if d.weekday() == tgt_day:
+                if d not in holidays:
+                    firsts.append(d) 
+                else:
+                    find_next_day = True
+        elif d.weekday() < SATURDAY and d not in holidays:
+            firsts.append(d) 
+            find_next_day = False
+
+    return trade_date in firsts
+
 
 ## find previous trading day relative to the date given
 def prev_trading_day(reference_date, holidays):
     one_day_back = timedelta(days=1)
     d = reference_date - one_day_back
     while True:
-        if d.weekday() < SATURDAY and d not in holidays:
+        if d.weekday() < SATURDAY and d.strftime("%Y-%m-%d") not in holidays:
             return date(d.year, d.month, d.day)
         else:
             d -= one_day_back
