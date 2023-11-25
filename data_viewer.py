@@ -3,6 +3,7 @@ import argparse
 import calendar_calcs
 from datetime import datetime
 import pandas
+import os
 from prettytable import PrettyTable  
 
 WEEKDAYS = ['MON','TUE','WED','THU','FRI','SAT','SUN']
@@ -14,6 +15,8 @@ WEEKDAYS = ['MON','TUE','WED','THU','FRI','SAT','SUN']
 ### buy on next open if close[1] is lower than low price established on the first day of the week
 ### sell on first day the trade is profitable or after days duration,
 ### sell if stopped out on close (using standard stop)
+
+DATA_DIR = os.getenv('DATA_DIR', '/home/jcarter/work/trading/data/')
 
 def adjust_prices(df):
     ## adjust the entire price bar to adjusted prices
@@ -41,7 +44,7 @@ def show_data(stock, days_back, use_raw):
     cal_table.float_format['Volume'] = ".0"
     cal_table.align['Volume'] = "r"
 
-    stock_file = f'/home/jcarter/sandbox/trading/data/{stock}.csv'
+    stock_file = f'{DATA_DIR}/{stock}.csv'
     print(f'Stock: {stock} -> {stock_file}')
     new_df, orig_df = adjust_prices(pandas.read_csv(stock_file))
     stock_df = new_df
