@@ -3,7 +3,7 @@
 from collections import deque
 import pandas
 import statistics
-from datetime import datetime
+from datetime import datetime, timedelta
 import math
 import calendar_calcs
 
@@ -17,7 +17,7 @@ def _weekday(date_object):
     return to_date(date_object).weekday()
 
 class Indicator(object):
-    def __init__(self, history_len, derived_len):
+    def __init__(self, history_len, derived_len=None):
         self.history = deque()
         self.derived = deque()
         self.history_len = history_len
@@ -28,11 +28,18 @@ class Indicator(object):
         t_data = self.transform(data)
         self.history.append(t_data)
         self.pushed += 1
-        self._calculate()
 
-        if len(self.derived) > self.derived_len: self.derived.popleft()
+        old_len = len(self.derived)
+
+        ## flag when new derived data is available 
+        self._calculate()
+        new_len = len(self.derived)
+
+        if self.derived_len and len(self.derived) > self.derived_len: self.derived.popleft()
         if len(self.history) > self.history_len: self.history.popleft()
-        if len(self.derived) > 0:
+
+
+        if new_len > old_len:
             ## return requested history value, default is the current value: self.valueAt(0)
             return self.valueAt(idx=valueAt)
         else:
@@ -50,7 +57,7 @@ class Indicator(object):
         return data_point
 
     def _calculate(self):
-        return None
+        return None 
 
     def valueAt(self, idx):
         if idx >= 0 and len(self.derived) >= idx+1:
@@ -187,6 +194,68 @@ class WeeklyConverter(object):
 
         self.weekly_df.set_index('Date', inplace = True)
         return self.weekly_df
+
+
+class WeeklyBar(Indicator):
+    def __init__(self):
+        super().__init__(history_len=1)
+        self.holidays = calendar_calcs.load_holidays() 
+        self.FRIDAY = 4
+        self.open = self.high = self.low = self.close = None
+        self.volume = 0
+
+    def _clear_week(self):
+        self.open = self.high = self.low = self.close = None
+        self.volume = 0 
+
+    def get_week(self, data_dt):
+        ONE_WEEK = 7
+        week  = 0
+        prev = data_dt
+        while prev.month == data_dt.month:
+            prev -= timedelta(days=ONE_WEEK)
+            week += 1
+        return week
+
+    def _calculate(self):
+        ## expecting a OHLC bar to be pushed
+        daily_bar = self.history[-1]
+
+        if self.open is None: self.open = daily_bar['Open']
+        if self.high is not None:
+            self.high = max(self.high, daily_bar['High'])
+        else:
+            self.high = daily_bar['High']
+        if self.low is not None:
+            self.low = min(self.low, daily_bar['Low'])
+        else:
+            self.low = daily_bar['Low']
+        self.close = daily_bar['Close']
+        self.volume += daily_bar['Volume']
+
+        data_dt = datetime.strptime(daily_bar['Date'],"%Y-%m-%d").date()
+        if calendar_calcs.is_end_of_week(data_dt, self.holidays):
+            v = { 
+                    'Date':daily_bar['Date'],
+                    'Week':self.get_week(data_dt)
+                    'Open':self.open,
+                    'High':self.high,
+                    'Low':self.low,
+                    'Close':self.close,
+                    'Volume':self.volume
+            }
+            self.derived.append(v)
+            self._clear_week()
+
+    def convert_daily_file(self, filename, filename_out=weekly.csv):
+        stock_df = pandas.read_csv(filename)
+        for i in range(stock_df.shape[0]):
+            idate = stock_df.index[i]
+            stock_bar = stock_df.loc[idate]
+            self.push(stock_bar)
+
+        df = pandas.DataFrame(self.derived)
+        df.to_csv(filename_out)
 
 
 class Mo(Indicator):
@@ -555,7 +624,91 @@ class MondayAnchor(Indicator):
                     self.derived.append((self.anchor, bar['Close'] - self.anchor['Low']))
                 else:
                     self.derived.append((self.anchor, 0))
-        
+
+class Anchor(Indicator):
+    def __init__(self, day, derived_len=50):
+        super().__init__(history_len=1, derived_len=derived_len)
+        self.holidays = calendar_calcs.load_holidays()
+        self.anchor = None
+        self.day = day
+
+    def _calculate(self):
+        ## expecting (datetime.date, OHLC bar) tuple
+        dt, bar = self.history[-1]
+        if calendar_calcs.is_day_of_week(self.day, dt, self.holidays):
+            self.anchor = bar
+            ## record new anchor with no breakout
+            self.derived.append((self.anchor, 0))
+        else:
+            ## record breakouts above or below current anchor
+            if self.anchor is not None:
+                if bar['Close'] > self.anchor['High']:
+                    self.derived.append((self.anchor, bar['Close'] - self.anchor['High']))
+                elif bar['Close'] < self.anchor['Low']:
+                    self.derived.append((self.anchor, bar['Close'] - self.anchor['Low']))
+                else:
+                    self.derived.append((self.anchor, 0))
+
+
+## uses last day of the week range as breakout points
+class LastDayAnchor(Indicator):
+    def __init__(self, derived_len=50):
+        super().__init__(history_len=1, derived_len=derived_len)
+        self.holidays = calendar_calcs.load_holidays() 
+        self.anchor = None
+
+    def _calculate(self):
+        ## expecting (datetime.date, OHLC bar) tuple
+        dt, bar = self.history[-1]
+        if calendar_calcs.is_end_of_week(dt, self.holidays):
+            self.anchor = bar
+            ## record new anchor with no breakout
+            self.derived.append((self.anchor, 0))
+        else:
+            ## record breakouts above or below current anchor
+            if self.anchor is not None:
+                if bar['Close'] > self.anchor['High']:
+                    self.derived.append((self.anchor, bar['Close'] - self.anchor['High']))
+                elif bar['Close'] < self.anchor['Low']:
+                    self.derived.append((self.anchor, bar['Close'] - self.anchor['Low']))
+                else:
+                    self.derived.append((self.anchor, 0))
+
+
+## returns a tuple of cardinal alue of current trading day (week, month, year)
+## expecting successive dt from a progressing timeseries 
+class TradingDayMarker(Indicator):
+    def __init__(self, derived_len=None):
+        super().__init__(history_len=1, derived_len=derived_len)
+        self.prev_year = None
+        self.prev_month = None
+        self.wk = self.mth = self.yr = None
+
+    def _calculate(self):
+        ## expecting successive dt 
+        dt = self.history[-1]
+        mark_date = pandas.to_datetime(dt)
+        self.wk = mark_date.weekday()
+        month = mark_date.month
+        year = mark_date.year
+
+        if self.prev_month is None: self.prev_month = month
+        if self.prev_year is None: self.prev_year = year 
+
+        if month != self.prev_month:
+            self.mth = 1
+            self.prev_month = month
+        elif self.mth is not None:
+            self.mth += 1
+
+        if year != self.prev_year:
+            self.yr = 1
+            self.prev_year = year
+        elif self.yr is not None:
+            self.yr += 1
+
+        self.derived.append((self.wk, self.mth, self.yr))
+
 
 class VolatilityStop(Indicator):
     def __init__(self, stdev_multiplier, default_stop, history_len, derived_len=50):
