@@ -2,6 +2,7 @@
 
 from collections import deque
 import pandas
+import numpy
 import statistics
 from datetime import datetime, timedelta
 import math
@@ -15,6 +16,25 @@ def to_date(date_object):
 
 def _weekday(date_object):
     return to_date(date_object).weekday()
+
+## consumes an entire dataframe and returns
+## a parallel timeseries of the desired indicator
+def indicator_to_df(stock_df, indicator, name='Value', merge=False):
+
+    derived = []
+    for i in range(stock_df.shape[0]):
+        index = stock_df.index[i]
+        stock_bar = stock_df.loc[index]
+        v = indicator.push(stock_bar)
+        if v is None: v = numpy.nan
+        derived.append( {'Date':stock_bar['Date'], name:v })
+
+    new_df = pandas.DataFrame(derived)
+    if merge:
+        new_df = pandas.merge(stock_df, new_df, on='Date', how='left')
+
+    return new_df
+
 
 class Indicator(object):
     def __init__(self, history_len, derived_len=None):
@@ -48,6 +68,11 @@ class Indicator(object):
     def count(self):
         return len(self.derived)
 
+    ## external mechanism to attach at transform function
+    ## without having to write a new indicator
+    def attach_transform(self, tfunc):
+        self.transform = tfunc
+
     def transform(self, data_point):
         #transform historical data point before feeding it to indicator calcs
         #this allows us to pick of a value in a dataframe, combine dataframe values, etc..
@@ -66,6 +91,7 @@ class Indicator(object):
             return self.derived[i]
         else:
             return None
+
 
 def cross_up(timeseries, threshold, front_index, back_index):
     x_up = False
@@ -110,95 +136,9 @@ class DataSeries(Indicator):
         self.derived.append(self.history[-1])
 
 
-class WeeklyConverter(object):
-    def __init__(self, daily_df, indicator_dict = None):
-        self.FRIDAY = 4
-        self.daily_df = daily_df
-        self.weekly_df = None
-        self.open, self.high, self.low, self.close = None, None, None, None
-
-        self.indicator_dict = dict()
-        if indicator_dict is not None:
-            self.indicator_dict = indicator_dict
-
-        self.last_week_bar = self._empty_bar()
-
-    def _empty_bar(self):
-        ## include indicator columns if given
-        inames = []
-        if self.indicator_dict is not None:
-            inames = sorted(self.indicator_dict.keys())
-
-        cols = 'Date Open High Low Close'.split() + inames + ['EndOfWeek']
-        empties = [None for i in range(len(cols))]
-        return pandas.DataFrame(columns=cols, data=[empties])
-
-
-    def _fill_bar(self, dt, is_end_of_week):
-        df = self._empty_bar()
-
-        df['Date'] = dt
-        df['Open'] = self.open
-        df['High'] = self.high
-        df['Low'] = self.low
-        df['Close'] = self.close
-        df['EndOfWeek'] = is_end_of_week
-
-        # fill in indicators
-        if is_end_of_week:
-            for indicator in self.indicator_dict.values():
-                indicator.push(df)
-
-        for name, indicator in self.indicator_dict.items():
-            df[name] = indicator.valueAt(0)
-
-        return df
-
-    def update_weekly_bar(self, i):
-        bar = self.daily_df.iloc[i]
-        if self.open is None: self.open = bar['Open']
-        self.high = bar['High'] if self.high is None else max(self.high, bar['High'])
-        self.low = bar['Low'] if self.low is None else min(self.low, bar['Low'])
-        self.close = bar['Close']
-
-    def convert(self):
-        daily_count = self.daily_df.shape[0]
-        for i in range(daily_count):
-            today = self.daily_df.index[i]
-            is_end_of_week = False
-            if i < (daily_count - 1):
-                tomorrow = self.daily_df.index[i+1]
-                # if day of the week value of today is gte tomorrow
-                # it indicates that tomorrow will be the start of a new week
-                # therefore summarize and post the current weekly bar
-                self.update_weekly_bar(i)
-                if _weekday(today) >= _weekday(tomorrow):
-                    is_end_of_week = True
-                    self.last_week_bar = self._fill_bar(today, is_end_of_week)
-                    # reset running weekly OHLC values
-                    self.open, self.high, self.low, self.close = None, None, None, None
-            else:
-                if _weekday(today) == self.FRIDAY:
-                    self.update_weekly_bar(i)
-                    is_end_of_week = True
-                    self.last_week_bar = self._fill_bar(today, is_end_of_week)
-
-            self.last_week_bar['Date'] = today
-            self.last_week_bar['EndOfWeek'] = is_end_of_week
-
-            if self.weekly_df is None:
-                self.weekly_df = pandas.DataFrame.copy(self.last_week_bar, deep=True)
-            else:
-                self.weekly_df = pandas.concat([self.weekly_df, self.last_week_bar], axis=0)
-
-
-        self.weekly_df.set_index('Date', inplace = True)
-        return self.weekly_df
-
-
 class WeeklyBar(Indicator):
     def __init__(self):
-        super().__init__(history_len=1)
+        super().__init__(history_len=10)
         self.holidays = calendar_calcs.load_holidays() 
         self.FRIDAY = 4
         self.open = self.high = self.low = self.close = None
@@ -237,7 +177,7 @@ class WeeklyBar(Indicator):
         if calendar_calcs.is_end_of_week(data_dt, self.holidays):
             v = { 
                     'Date':daily_bar['Date'],
-                    'Week':self.get_week(data_dt)
+                    'Week':self.get_week(data_dt),
                     'Open':self.open,
                     'High':self.high,
                     'Low':self.low,
@@ -247,15 +187,13 @@ class WeeklyBar(Indicator):
             self.derived.append(v)
             self._clear_week()
 
-    def convert_daily_file(self, filename, filename_out=weekly.csv):
-        stock_df = pandas.read_csv(filename)
+    def convert_daily_dataframe(self, stock_df):
         for i in range(stock_df.shape[0]):
             idate = stock_df.index[i]
             stock_bar = stock_df.loc[idate]
             self.push(stock_bar)
 
-        df = pandas.DataFrame(self.derived)
-        df.to_csv(filename_out)
+        return pandas.DataFrame(self.derived)
 
 
 class Mo(Indicator):
@@ -322,6 +260,7 @@ class MA(Indicator):
         if len(self.history) >= self.history_len:
             m = list(self.history)[-self.history_len:]
             self.derived.append(statistics.mean(m))
+
 
 class IBS(Indicator):
     ## internal bar strength iindicator
@@ -836,40 +775,6 @@ def test_monday_anchor():
         print("bar = ", df.loc[cur_dt])
         print(v)
         print("")
-
-
-
-def test_converter():
-
-    df = create_simulated_timeseries(length=19)
-    print(df)
-
-    wk_df = WeeklyConverter(df).convert()
-    print("\nconverted weekly\n")
-    print(wk_df)
-
-
-def test_converter_with_indicator():
-
-    df = create_simulated_timeseries(length=19)
-    print(df)
-
-    wgt_close = WeightedClose(history_len=3)
-
-    wk_df = WeeklyConverter(df, indicator_dict={'WgtClose':wgt_close}).convert()
-    print("\nconverted weekly\n")
-    print(wk_df)
-
-
-def test_converter_with_ema():
-
-    df = create_simulated_timeseries(length=19)
-    close_ema = CloseEMA(coeff=0.3, warmup=2, history_len=50, derived_len=20)
-
-    wk_df = WeeklyConverter(df, indicator_dict={'CloseEMA':close_ema}).convert()
-    combined = df.join(wk_df, on='Date', rsuffix="_w")
-
-    print(combined)
 
 
 def test_ema():
