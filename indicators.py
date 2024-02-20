@@ -137,12 +137,16 @@ class DataSeries(Indicator):
 
 
 class WeeklyBar(Indicator):
-    def __init__(self):
+    def __init__(self,anchor_day=None):
         super().__init__(history_len=10)
         self.holidays = calendar_calcs.load_holidays() 
-        self.FRIDAY = 4
         self.open = self.high = self.low = self.close = None
         self.volume = 0
+        ## optional market where a week begins nad wends
+        ## i.e. anchor_day = 4, end the week on Friday
+        self.anchor_day = anchor_day
+        self.present_week = None
+        self.present_eow = None
 
     def _clear_week(self):
         self.open = self.high = self.low = self.close = None
@@ -156,6 +160,21 @@ class WeeklyBar(Indicator):
             prev -= timedelta(days=ONE_WEEK)
             week += 1
         return week
+
+    def get_present_week(self, data_dt):
+        ONE_WEEK = 7
+        if calendar_calcs.is_end_of_week(data_dt, self.holidays):
+            self.present_week = self.get_week(data_dt)
+            self.present_eow = data_dt
+            return self.present_week
+        else:
+            if self.present_week is not None:
+                next_week = self.present_eow + timedelta(days=ONE_WEEK)
+                if next_week.month == self.present_eow.month:
+                    return self.present_week + 1
+                else:
+                    return 1
+            return None
 
     def _calculate(self):
         ## expecting a OHLC bar to be pushed
@@ -174,7 +193,13 @@ class WeeklyBar(Indicator):
         self.volume += daily_bar['Volume']
 
         data_dt = datetime.strptime(daily_bar['Date'],"%Y-%m-%d").date()
-        if calendar_calcs.is_end_of_week(data_dt, self.holidays):
+
+        bundle_bar = False
+        if self.anchor_day is not None:
+            bundle_bar = calendar_calcs.is_day_of_week(self.anchor_day, data_dt, self.holidays)
+        else:
+            bundle_bar = calendar_calcs.is_end_of_week(data_dt, self.holidays)
+        if bundle_bar:
             v = { 
                     'Date':daily_bar['Date'],
                     'Week':self.get_week(data_dt),
