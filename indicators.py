@@ -93,39 +93,31 @@ class Indicator(object):
             return None
 
 
-def cross_up(timeseries, threshold, front_index, back_index):
-    x_up = False
-    front = back = None
-    if isinstance(threshold, Indicator):
-        front = threshold.valueAt(front_index)
-        back = threshold.valueAt(back_index)
-    else:
-        ## constant value
-        front = back = threshold
-        
-    if front != None and back != None:
-        if timeseries.valueAt(front_index) > front:
-            if timeseries.valueAt(back_index) <= back: 
-                x_up = True
+class HighestValue():
+    def __init__(self, v, history=50):
+        self.highest = v
+        self.history = history
+        self.highs = deque()
+        self.highs.append(v)
 
-    return x_up
+    def push(self, new_value):
+        self.highest = max(self.highest, new_value)
+        self.highs.append(self.highest)
+        if len(self.highs) > self.history:
+            self.highs.popleft()
 
-def cross_dwn(timeseries, threshold, front_index, back_index):
-    x_dwn = False
-    front = back = None
-    if isinstance(threshold, Indicator):
-        front = threshold.valueAt(front_index)
-        back = threshold.valueAt(back_index)
-    else:
-        ## constant value
-        front = back = threshold
-        
-    if front != None and back != None:
-        if timeseries.valueAt(front_index) < front:
-            if timeseries.valueAt(back_index) >= back: 
-                x_dwn = True
+class LowestValue():
+    def __init__(self, v, history=50):
+        self.lowest = v
+        self.history = history
+        self.lows = deque()
+        self.lows.append(v)
 
-    return x_dwn
+    def push(self, new_value):
+        self.lowest = min(self.lowest, new_value)
+        self.lows.append(self.lowest)
+        if len(self.lows) > self.history:
+            self.lows.popleft()
 
 
 class DataSeries(Indicator):
@@ -231,40 +223,6 @@ class Mo(Indicator):
             p = self.history[-self.history_len]
             m = n - p
             self.derived.append(m)
-
-class RunMonitor(Indicator):
-    def __init__(self, derived_len=50):
-        super().__init__(history_len=2, derived_len=derived_len)
-        self.downs = self.ups = 0
-        self.up_total = self.down_total = 0
-
-    def _calculate(self):
-        ## creates tuples representing consecutive changes (runs) in a time series -> (run_count, magnitude)
-        ## negative values indicate consecutive down moves: (-3, -4,5) = down 3 days with total maginitude of -4.5 points
-        ## positive values indicate consecutive up moves: (5, 11.24) = up 5 days with total maginitude of 11.24 points
-        ## zero price changes are neutral
-        if len(self.history) >= self.history_len:
-            n = self.history[-1]
-            p = self.history[-2]
-            m = n - p
-            if m < 0:
-                self.downs -= 1
-                self.down_total += m
-                self.ups = self.up_total  = 0 
-                self.derived.append((self.downs, self.down_total))
-            elif m > 0:
-                self.ups += 1
-                self.up_total += m
-                self.downs = self.down_total  = 0
-                self.derived.append((self.ups, self.up_total))
-            else:
-                if len(self.derived) > 0:
-                    prev_cnt, prev_val = self.derived[-1]
-                    if prev_cnt < 0: prev_cnt -= 1
-                    if prev_cnt > 0: prev_cnt += 1
-                    self.derived.append((prev_cnt, prev_val))
-                else:
-                    self.derived.append((0,0))
 
 class LogRtn(Indicator):
     def __init__(self, history_len, derived_len=50):
@@ -674,95 +632,6 @@ class TradingDayMarker(Indicator):
         self.derived.append((self.wk, self.mth, self.yr))
 
 
-class VolatilityStop(Indicator):
-    def __init__(self, stdev_multiplier, default_stop, history_len, derived_len=50):
-        super().__init__(history_len, derived_len)
-        ## stdev_multiplier = what we mulitiply the volatility over history len that 
-        ##     we use calculate the stop: current_high - volatility * stdev_mulitplier
-        ## default_stop = default % loss allowed when stdev-derived stop value isn't available 
-        self.stdev_multiplier = abs(stdev_multiplier)
-        self.default_stop = abs(default_stop)
-        self.highest = None
-        self.first_open = None 
-        self.current_stop = None
-        self._stdev = deque() 
-        self.position = 0
-
-
-    def push(self, current_bar, position):
-        ## propogate current position to calculate step
-        self.position = position
-        return super().push(current_bar)
-
-    def _calc_stdev(self):
-        if len(self.history) >= self.history_len:
-            highs = [ bar['High'] for bar in self.history ]
-            lows = [ bar['Low'] for bar in self.history ]
-            ## do dispersion based on price range extremes 
-            self._stdev.append(statistics.pstdev((highs + lows)))
-            if len(self._stdev) > self.derived_len:
-                self._stdev.popleft()
-    
-    def stdev(self, index=0):
-        i = abs(index)+1
-        if i <= len(self._stdev):
-            return self._stdev[-i]
-        else:
-            return None
-        
-    def _calculate(self):
-        current_bar = self.history[-1]
-
-        self._calc_stdev()
-
-        m = None
-        if self.position > 0:
-            prev_stdev = self.stdev(1)
-            if self.first_open is None:
-                self.first_open = current_bar['Open']
-                if prev_stdev is None:
-                    m = (1-self.default_stop) * self.first_open
-                    #print(current_bar.name, f'Anchor (Open): {self.first_open} Stop= {m} Using default {self.default_stop}')
-                else:
-                    m = self.first_open - (prev_stdev * self.stdev_multiplier)
-                    #print(current_bar.name, f'Anchor (Open): {self.first_open} Stop= {m} Using stdev {prev_stdev} x {self.stdev_multiplier}')
-                ## grab trailing high value
-                self.highest = current_bar['High']
-            else:
-                if prev_stdev is None:
-                    m = (1-self.default_stop) * self.highest
-                    #print(current_bar.name, f'Anchor (High): {self.highest} Stop= {m} Using default {self.default_stop}')
-                else:
-                    m = self.highest - (prev_stdev *  self.stdev_multiplier)
-                    #print(current_bar.name, f'Anchor (High): {self.highest} Stop= {m} Using stdev {prev_stdev} x {self.stdev_multiplier}')
-                self.highest = max(self.highest, current_bar['High'])
-    
-            if self.current_stop is None:
-                self.current_stop = m
-            else:
-                self.current_stop = max(self.current_stop, m)
-        else:
-            self.highest = None
-            self.first_open = None
-            self.current_stop = None
-
-        self.derived.append(self.current_stop)
-        return self.current_stop 
-
-
-class VolatilityStopClose(VolatilityStop):
-    def __init__(self, stdev_multiplier, default_stop, history_len, derived_len=50):
-        super().__init__(stdev_multiplier, default_stop, history_len, derived_len)
-
-    def _calc_stdev(self):
-        if len(self.history) >= self.history_len:
-            close_prices = [ bar['Close'] for bar in self.history ]
-            ## do dispersion based on price range extremes 
-            self._stdev.append(statistics.pstdev(close_prices))
-            if len(self._stdev) > self.derived_len:
-                self._stdev.popleft()
-
-
 def create_simulated_timeseries(length):
     from datetime import date, timedelta
     from random import randint
@@ -966,23 +835,6 @@ def test_dataseries():
     print(e.derived)
     print(e.valueAt(3))
 
-def test_runs():
-
-    e = RunMonitor()
-
-    from random import randint
-    samples = 50
-    changes = [ randint(-300,300)/100.0 for x in range(samples) ]
-    changes[0] = 100
-    prices = [ sum(changes[0:i]) for i in range(1,samples+1) ]
-    prev = None
-    for i, p in enumerate(prices):
-        v = e.push(p)
-        if prev is not None:
-            c = p - prev
-            print(f'{i:03d} {p:10.4f} {c:10.4f} {v}')
-        prev = p 
-
 
 def test_thanos():
 
@@ -996,47 +848,6 @@ def test_thanos():
     for i, p in enumerate(prices):
         v = e.push(p)
         print(f'{i:03d} {p:10.4f} {v}')
-
-
-def test_volatility_stop():
-    from random import randint
-    df = create_simulated_timeseries(length=200)
-
-    ## create a simulated position series 
-    ## and tack it on the side of the price timeseries
-    q = []
-    start = 10
-    stop = start+ randint(60,100)
-    ## create a random on/off long position
-    for i in range(len(df)):
-        p = 0
-        if i >= start and i <stop:
-            p = 1
-        if i == stop:
-            start = stop + randint(10,60)
-            stop = start + randint(10,60)
-        q.append(p)
-
-    pos = pandas.Series(q,index=df.index)
-    df['Pos'] = pos
-
-    v = VolatilityStop(stdev_multiplier=2.0, default_stop=0.3, history_len=10, derived_len=50)
-
-    stops = []
-    stdevs = []
-    for i in range(len(df)):
-        bar = df.loc[df.index[i]]
-        stops.append(v.push(bar,bar['Pos']))
-        stdevs.append(v.stdev())
-
-    ss = pandas.Series(stops,index=df.index)
-    yy = pandas.Series(stdevs,index=df.index)
-
-    df['StDev'] = yy
-    df['Stop'] = ss
-
-    df.to_html('voltest_table.html')
-        
 
 
 
