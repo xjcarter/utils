@@ -127,6 +127,28 @@ class DataSeries(Indicator):
     def _calculate(self):
         self.derived.append(self.history[-1])
 
+class Runner(Indicator):
+    ## seeks out N up/down days in a row
+    ## returned value = -(total of returns) (down run), 0 (no run), or +(total of returns) (up run)
+    def __init__(self, run_count, derived_len=10):
+        super().__init__(history_len=derived_len+1, derived_len=derived_len)
+        self.run_count = run_count
+
+    def _calculate(self):
+        run = 0 
+        if len(self.history) > self.run_count:
+            group = []
+            i = 0
+            while i < self.run_count:
+                v = self.history[-(i+1)]/self.history[-(i+2)] - 1
+                group.append(v)
+                i += 1
+            tot = sum(group)
+            sum_of_abs = sum([abs(x) for x in group])
+            if abs(tot) == sum_of_abs:
+                run = tot 
+        self.derived.append((run, group))
+
 
 class WeeklyBar(Indicator):
     def __init__(self,anchor_day=None):
