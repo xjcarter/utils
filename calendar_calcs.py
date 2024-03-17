@@ -29,6 +29,51 @@ def business_days(trade_date):
 
     return busi_days
 
+## given a date, 
+## return the index of that date in the month of business days
+def day_of_month(dt, holidays):
+    v = dt
+    if isinstance(dt, str): v = cvt_date(dt)
+    mth = []
+    for d  in business_days(v):
+        if d not in holidays: mth.append(d)
+    if v in mth: return mth.index(v) + 1
+    return None
+
+## given an index
+## return the date in the month at that index of business days
+def day_in_month(mth, year, day_in_month, holidays):
+    v = cvt_date(f'{year}-{mth:02d}-01') 
+    mth = []
+    for d  in business_days(v):
+        if d not in holidays: mth.append(d)
+    if v in mth:
+        assert(day_in_month != 0)
+        if day_in_month > 0: day_in_month -= 1
+        return mth[day_in_month]
+    return None
+
+## return cardinal week value for given date
+## ie. 2022-02-3 is in the 1st week of the month
+## therefore, this func would return 1
+def week_in_month(dt, holidays):
+    v = dt
+    if isinstance(dt, str): v = cvt_date(dt)
+    mth = []
+    for d  in business_days(v):
+        if d not in holidays: mth.append(d)
+    if mth:
+        weeks=[1] * len(mth)
+        for i in range(1,len(mth)):
+            increment = 0
+            prev = mth[i-1].weekday()
+            today = mth[i].weekday()
+            if prev > today: increment = 1 
+            weeks[i] = weeks[i-1] + increment
+        if v in mth:
+            return weeks[mth.index(v)]
+    return None
+    
 
 ## find the first trading day of the week 
 def is_start_of_week(trade_date, holidays):
@@ -46,6 +91,7 @@ def is_start_of_week(trade_date, holidays):
             find_next_day = False
 
     return trade_date in firsts
+
 
 def is_day_of_week(tgt_day, trade_date, holidays):
     firsts = []
