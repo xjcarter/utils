@@ -7,6 +7,8 @@ import os
 
 DATA_DIR = os.getenv('DATA_DIR', '/home/jcarter/work/trading/data/')
 
+## convert a daily bar time series to weekly bar time series ...
+
 def adjust_prices(df):
     ## adjust the entire price bar to adjusted prices
     ## using the ratio of of Adj_Close/Close as multiplier
