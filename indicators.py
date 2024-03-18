@@ -127,6 +127,16 @@ class DataSeries(Indicator):
     def _calculate(self):
         self.derived.append(self.history[-1])
 
+    def highest(self, count):
+        if len(self.derived) >= count:
+            return max(list(self.derived)[-count:])
+        return None
+
+    def lowest(self, count):
+        if len(self.derived) >= count:
+            return min(list(self.derived)[-count:])
+        return None
+
 class Runner(Indicator):
     ## seeks out N up/down days in a row
     ## returned value = -(total of returns) (down run), 0 (no run), or +(total of returns) (up run)
@@ -136,8 +146,8 @@ class Runner(Indicator):
 
     def _calculate(self):
         run = 0 
+        group = []
         if len(self.history) > self.run_count:
-            group = []
             i = 0
             while i < self.run_count:
                 v = self.history[-(i+1)]/self.history[-(i+2)] - 1
