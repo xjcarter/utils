@@ -47,7 +47,7 @@ def day_in_month(mth, year, day_in_month, holidays):
     mth = []
     for d  in business_days(v):
         if d not in holidays: mth.append(d)
-    if v in mth:
+    if mth:
         assert(day_in_month != 0)
         if day_in_month > 0: day_in_month -= 1
         return mth[day_in_month]
