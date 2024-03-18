@@ -56,7 +56,9 @@ def day_in_month(mth, year, day_in_month, holidays):
 ## return cardinal week value for given date
 ## ie. 2022-02-3 is in the 1st week of the month
 ## therefore, this func would return 1
-def week_in_month(dt, holidays):
+## if negate last week flag is set, the function
+## will return the last week of the month as a negative value: i.e -4 or -5
+def week_in_month(dt, holidays, negate_last_week=False):
     v = dt
     if isinstance(dt, str): v = cvt_date(dt)
     mth = []
@@ -71,7 +73,13 @@ def week_in_month(dt, holidays):
             if prev > today: increment = 1 
             weeks[i] = weeks[i-1] + increment
         if v in mth:
-            return weeks[mth.index(v)]
+            weeks_in_mth = max(weeks)
+            w = weeks[mth.index(v)] 
+            ## flag last week of the month with a negative value
+            if negate_last_week and w == weeks_in_mth:
+                return -w
+            return w
+
     return None
     
 
