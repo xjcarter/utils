@@ -54,8 +54,12 @@ def day_in_month(mth, year, day_in_month, holidays):
     return None
 
 def last_day_of_month(cur_dt, holidays):
-    last_dt = day_in_month(cur_dt.year, cur_dt.month, -1, holidays)
+    last_dt = day_in_month(cur_dt.month, cur_dt.year, -1, holidays)
     return cur_dt == last_dt
+
+def first_day_of_month(cur_dt, holidays):
+    first_dt = day_in_month(cur_dt.month, cur_dt.year, 1, holidays)
+    return cur_dt == first_dt
 
 ## return cardinal week value for given date
 ## ie. 2022-02-3 is in the 1st week of the month
