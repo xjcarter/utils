@@ -15,7 +15,7 @@ def to_date(date_object):
     return date_object
 
 def _weekday(date_object):
-    return to_date(date_object).weekday(
+    return to_date(date_object).weekday()
 
 ## consumes an entire dataframe and returns
 ## a parallel timeseries of the desired indicator
@@ -33,7 +33,7 @@ def indicator_to_df(stock_df, indicator, name='Value', merge=False):
     if merge:
         new_df = pandas.merge(stock_df, new_df, on='Date', how='left')
 
-    return new_df)
+    return new_df
 
 class Indicator(object):
     def __init__(self, history_len, derived_len=None):
@@ -270,7 +270,7 @@ class WeeklyBar(Indicator):
             stock_bar = stock_df.loc[idate]
             self.push(stock_bar)
 
-    return pandas.DataFrame(self.derived)
+        return pandas.DataFrame(self.derived)
 
 
 
@@ -361,7 +361,20 @@ class CutlersRSI(Indicator):
 
             self.derived.append(rsi)
 
+## synthethic VIX calculation that is highly correlated with the actual VIX
+## (when applied to SPY)
+class SyntheticVIX(Indicator):
+    def __init__(self, history_len=22, derived_len=50):
+        super().__init__(history_len, derived_len)
+
+    def _calculate(self):
+        if len(self.history) >= self.history_len:
+            highest = max([x['Close'] for x in self.history])
+            low_today = self.history[-1]['Low']
+            vix = 100 * (highest - low_today)/highest
+            self.derived.append(vix)
             
+
 class Thanos(Indicator):
     def __init__(self, ma_len, no_of_samples, derived_len=50):
         # ma_len = benchmark moving average
