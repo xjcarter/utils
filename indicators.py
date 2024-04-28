@@ -15,7 +15,7 @@ def to_date(date_object):
     return date_object
 
 def _weekday(date_object):
-    return to_date(date_object).weekday()
+    return to_date(date_object).weekday(
 
 ## consumes an entire dataframe and returns
 ## a parallel timeseries of the desired indicator
@@ -33,8 +33,7 @@ def indicator_to_df(stock_df, indicator, name='Value', merge=False):
     if merge:
         new_df = pandas.merge(stock_df, new_df, on='Date', how='left')
 
-    return new_df
-
+    return new_df)
 
 class Indicator(object):
     def __init__(self, history_len, derived_len=None):
@@ -51,14 +50,12 @@ class Indicator(object):
 
         old_len = len(self.derived)
 
-        ## flag when new derived data is available 
+        ## flag when new derived data is available
         self._calculate()
         new_len = len(self.derived)
 
         if self.derived_len and len(self.derived) > self.derived_len: self.derived.popleft()
         if len(self.history) > self.history_len: self.history.popleft()
-
-
         if new_len > old_len:
             ## return requested history value, default is the current value: self.valueAt(0)
             return self.valueAt(idx=valueAt)
@@ -82,7 +79,7 @@ class Indicator(object):
         return data_point
 
     def _calculate(self):
-        return None 
+        return None
 
     def valueAt(self, idx):
         if idx >= 0 and len(self.derived) >= idx+1:
@@ -92,6 +89,39 @@ class Indicator(object):
         else:
             return None
 
+def cross_up(timeseries, threshold, front_index, back_index):
+    x_up = False
+    front = back = None
+    if isinstance(threshold, Indicator):
+        front = threshold.valueAt(front_index)
+        back = threshold.valueAt(back_index)
+    else:
+        ## constant value
+        front = back = threshold
+        
+    if front != None and back != None:
+        if timeseries.valueAt(front_index) > front:
+            if timeseries.valueAt(back_index) <= back: 
+                x_up = True
+
+    return x_up
+
+def cross_dwn(timeseries, threshold, front_index, back_index):
+    x_dwn = False
+    front = back = None
+    if isinstance(threshold, Indicator):
+        front = threshold.valueAt(front_index)
+        back = threshold.valueAt(back_index)
+    else:
+        ## constant value
+        front = back = threshold
+        
+    if front != None and back != None:
+        if timeseries.valueAt(front_index) < front:
+            if timeseries.valueAt(back_index) >= back: 
+                x_dwn = True
+
+    return x_dwn
 
 class HighestValue():
     def __init__(self, v, history=50):
@@ -119,7 +149,6 @@ class LowestValue():
         if len(self.lows) > self.history:
             self.lows.popleft()
 
-
 class DataSeries(Indicator):
     def __init__(self, derived_len=50):
         super().__init__(history_len=0, derived_len=derived_len)
@@ -145,7 +174,7 @@ class Runner(Indicator):
         self.run_count = run_count
 
     def _calculate(self):
-        run = 0 
+        run = 0
         group = []
         if len(self.history) > self.run_count:
             i = 0
@@ -156,14 +185,13 @@ class Runner(Indicator):
             tot = sum(group)
             sum_of_abs = sum([abs(x) for x in group])
             if abs(tot) == sum_of_abs:
-                run = tot 
+                run = tot
         self.derived.append((run, group))
-
 
 class WeeklyBar(Indicator):
     def __init__(self,anchor_day=None):
         super().__init__(history_len=10)
-        self.holidays = calendar_calcs.load_holidays() 
+        self.holidays = calendar_calcs.load_holidays()
         self.open = self.high = self.low = self.close = None
         self.volume = 0
         ## optional market where a week begins nad wends
@@ -174,7 +202,7 @@ class WeeklyBar(Indicator):
 
     def _clear_week(self):
         self.open = self.high = self.low = self.close = None
-        self.volume = 0 
+        self.volume = 0
 
     def get_week(self, data_dt):
         ONE_WEEK = 7
@@ -224,7 +252,7 @@ class WeeklyBar(Indicator):
         else:
             bundle_bar = calendar_calcs.is_end_of_week(data_dt, self.holidays)
         if bundle_bar:
-            v = { 
+            v = {
                     'Date':daily_bar['Date'],
                     'Week':self.get_week(data_dt),
                     'Open':self.open,
@@ -242,7 +270,8 @@ class WeeklyBar(Indicator):
             stock_bar = stock_df.loc[idate]
             self.push(stock_bar)
 
-        return pandas.DataFrame(self.derived)
+    return pandas.DataFrame(self.derived)
+
 
 
 class Mo(Indicator):
@@ -275,7 +304,6 @@ class MA(Indicator):
         if len(self.history) >= self.history_len:
             m = list(self.history)[-self.history_len:]
             self.derived.append(statistics.mean(m))
-
 
 class IBS(Indicator):
     ## internal bar strength iindicator
@@ -895,12 +923,7 @@ if __name__ == '__main__':
     test_stdev()
     test_beta()
     #test_macd()
-    #test_converter()
-    #test_converter_with_indicator()
-    #test_converter_with_ema()
-    #test_volatility_stop()
     #test_last_low()
-    #test_runs()
 
 
 
