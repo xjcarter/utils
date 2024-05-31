@@ -41,12 +41,10 @@ class Indicator(object):
         self.derived = deque()
         self.history_len = history_len
         self.derived_len = derived_len
-        self.pushed = 0
 
     def push(self, data, valueAt=0):
         t_data = self.transform(data)
         self.history.append(t_data)
-        self.pushed += 1
 
         old_len = len(self.derived)
 
