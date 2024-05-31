@@ -305,6 +305,19 @@ class MA(Indicator):
             m = list(self.history)[-self.history_len:]
             self.derived.append(statistics.mean(m))
 
+class TrueRange(Indicator):
+    ## Average True Range 
+    def __init__(self, derived_len=50):
+        super().__init__(history_len=2, derived_len=derived_len)
+
+    def _calculate(self):
+        if len(self.history) >= self.history_len:
+            prev_bar, bar  = self.history[-2], self.history[-1]
+            r1 = bar['High'] - bar['Low']
+            r2 = bar['High'] - prev_bar['Close']
+            r3 = prev_bar['Close'] - bar['Low']
+            self.derived.append(max(r1,r2,r3))
+
 class IBS(Indicator):
     ## internal bar strength iindicator
     ## (Close - Low)/(High - Low)
@@ -475,29 +488,21 @@ class ZScore(Indicator):
             m = statistics.mean(pop)
             self.derived.append((v-m)/s)
 
-
 class EMA(Indicator):
-    def __init__(self, coeff, warmup, history_len, derived_len=50):
-        super().__init__(history_len, max(derived_len, warmup))
+    def __init__(self, coeff, history_len, derived_len=50):
+        super().__init__(history_len, derived_len)
         self.coeff = coeff
-        self.warmup = warmup
-        self.counter = 0
         self.prev = None
 
     def _calculate(self):
         n = self.history[-1]
         if self.prev is not None:
             self.prev = (self.coeff * n) + (1 - self.coeff) * self.prev
-        else:
-            self.prev = n
-        self.counter += 1
-
-        if self.counter >= self.warmup:
             self.derived.append(self.prev)
-            self.counter = self.warmup  #just to prevent potential rollover
-            return self.prev
         else:
-            return None
+            if len(self.history) >= self.history_len:
+                self.prev = statistics.mean(list(self.history)[-self.history_len:])
+                self.derived.append(self.prev)
 
 class LastLow(Indicator):
     def __init__(self, last_len, derived_len=50):
@@ -709,6 +714,8 @@ def create_simulated_timeseries(length):
     from datetime import date, timedelta
     from random import randint
 
+    cols = 'Date Open High Low Close Day'.split()
+
     df = None
     opn = 100
     dt = date(2022,5,10)
@@ -716,15 +723,16 @@ def create_simulated_timeseries(length):
         hi = opn + randint(1,100)/100.0
         lo = opn - randint(1,100)/100.0
         r = (hi-lo)
-        close = (r * randint(1,10)/100.0) + lo
-        bar = pandas.DataFrame(columns='Date Open High Low Close Day'.split(),data=[[dt,opn,hi,lo,close,dt.weekday()]])
-        opn = hi - (r * randint(1,10)/100.0)
+        close = (r * randint(0,100)/100.0) + lo
+        bar = pandas.DataFrame(columns=cols,data=[[dt,opn,hi,lo,close,dt.weekday()]])
+        opn = close + (r * randint(-200,200)/100.0)
         dt = dt+timedelta(days=3) if dt.weekday() == 4 else dt+timedelta(days=1)
         if df is None:
             df = pandas.DataFrame(bar)
         else:
             df = pandas.concat([df,bar])
 
+    df[cols] = df[cols].round(2) 
     df.set_index('Date', inplace=True)
 
     return df
@@ -742,6 +750,30 @@ def test_monday_anchor():
         print("bar = ", df.loc[cur_dt])
         print(v)
         print("")
+
+def test_atr():
+
+    df = create_simulated_timeseries(length=16)
+
+    tr = TrueRange()
+    atr = MA(10)
+    
+    results = []
+    for i in range(df.shape[0]):
+        v = q = None
+        bar = df.iloc[i]
+        v = tr.push(bar)
+        if v is not None:
+            q = atr.push(v)
+            if q is not None: q = round(q,3)
+            v = round(v,3)
+        p = bar.to_dict()
+        p.update(dict(TR=v, ATR=q))
+        results.append(p)
+
+    xf = pandas.DataFrame(results)
+    print(xf)
+    print(atr.derived)
 
 
 def test_ema():
@@ -932,11 +964,12 @@ if __name__ == '__main__':
     #test_monday_anchor()
     #test_cross_dwn()
     #test_ema()
-    test_correlation()
-    test_stdev()
-    test_beta()
+    #test_correlation()
+    #test_stdev()
+    #test_beta()
     #test_macd()
     #test_last_low()
+    test_atr()
 
 
 
